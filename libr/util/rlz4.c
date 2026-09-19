@@ -154,6 +154,9 @@ R_API int r_lz4_decompress_block(ut8 *g_buf, const int comp_len, int *pp, ut8 *o
 	int i, run;
 	int ip = obuf? 0: BLOCK_SIZE;
 	int maxLen = obuf? osz: BLOCK_SIZE;
+	if (comp_len < 0 || maxLen < 0 || comp_len > 0x7fffffff - ip) {
+		return -1;
+	}
 	int ip_end = ip + comp_len;
 	ut8 *dst = obuf? obuf: g_buf;
 	ut16 tmp = 0;
@@ -169,13 +172,16 @@ R_API int r_lz4_decompress_block(ut8 *g_buf, const int comp_len, int *pp, ut8 *o
 			if (run == 15) {
 				for (; ip < ip_end;) {
 					const int c = g_buf[ip++];
+					if (run > maxLen - c) {
+						return -1;
+					}
 					run += c;
 					if (c != 255) {
 						break;
 					}
 				}
 			}
-			if ((p + run) > maxLen || (ip + run) > ip_end) {
+			if ((p + run) > maxLen || run > ip_end - ip) {
 				return -1;
 			}
 
@@ -266,6 +272,11 @@ R_API ut8 *r_lz4_decompress(const ut8* input, size_t input_size, size_t *output_
 		}
 		input += 4;
 		int p;
+		if ((size_t)comp_len > (size_t)(input_last - input) ||
+				comp_len > BLOCK_SIZE + EXCESS) {
+			r_unref (b);
+			return NULL;
+		}
 		memcpy (g_buf + BLOCK_SIZE, input, comp_len);
 		if (is_compressed) {
 			int error = r_lz4_decompress_block (g_buf, comp_len, &p, NULL, 0);
